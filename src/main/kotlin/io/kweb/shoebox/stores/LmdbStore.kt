@@ -5,11 +5,9 @@ import com.google.gson.*
 import com.google.gson.reflect.TypeToken
 import io.kweb.shoebox.*
 import java.nio.file.*
-import java.time.*
 import kotlin.reflect.KClass
 
 import org.lmdbjava.*
-import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteBuffer.allocateDirect
 import java.nio.charset.StandardCharsets.UTF_8
@@ -17,42 +15,17 @@ import kotlin.io.FileSystemException
 
 
 /**
+ * Uses LMDB for storage.
+ *
  * TODO: remove dependence on gson
  */
 
-inline fun <reified T : Any> LmdbStore(name: String) = LmdbStore(name, T::class)
-/*
-val defaultGson: Gson = Converters.registerAll(GsonBuilder()).let {
-    it.registerTypeAdapter(object : TypeToken<Duration>() {}.type, DurationConverter())
-}.create()
-*/
-class LmdbStore<T : Any>(val name: String, private val kc: KClass<T>, val gson: Gson = defaultGson) : Store<T> {
+inline fun <reified T : Any> LmdbStore(lmdbEnv: LmdbEnv, name: String) = LmdbStore(lmdbEnv, name, T::class)
 
-    companion object {
-        private val home: String = System.getProperty("user.dir")
-        var env: Env<ByteBuffer> = create("$home/data")
 
-        fun create(path: String): Env<ByteBuffer> {
-            println("LMDB database directory: $path")
-            val file = File(path)
-            if (!file.exists()) {
-                if (!file.mkdir()) {
-                    throw FileSystemException(file, reason = "Failed to create LMDB database directory!")
-                }
-            } else {
-                if (!file.isDirectory) {
-                    throw InvalidPathException("Not a directory", path)
-                }
-            }
-            return Env.create().setMapSize(10485760).setMaxDbs(100).open(file)
-        }
+class LmdbStore<T : Any>(var lmdbEnv: LmdbEnv, val name: String, private val kc: KClass<T>, val gson: Gson = defaultGson) : Store<T> {
 
-        protected fun finalize() {
-            env.close()
-        }
-
-    }
-
+    private val env = lmdbEnv.env
     private val dbi: Dbi<ByteBuffer> = env.openDbi(name, DbiFlags.MDB_CREATE)
 
     /**
@@ -147,4 +120,44 @@ class LmdbStore<T : Any>(val name: String, private val kc: KClass<T>, val gson: 
     protected fun finalize() {
         dbi.close()
     }
+
+}
+
+/*
+ * Database environment, wraps org.lmdbjava.Env<ByteBuffer>.
+ */
+
+class LmdbEnv(val env: Env<ByteBuffer>) {
+
+    companion object {
+
+        /*
+         * Creates new environment. By default, keys are limited to 512 bytes.
+         * Default mmap size is very low to ensure attention.
+         * @see
+         *
+         * @param path  file system destination
+         * @param mapSize  size in bytes
+         * @param maxDbs  maximum number of named stores
+         */
+        fun create(path: Path, mapSize: Long = 1048576, maxDbs: Int = 64): LmdbEnv {
+            val file = path.toFile()
+            if (!file.exists()) {
+                if (!file.mkdir()) {
+                    throw FileSystemException(file, reason = "Failed to create LMDB database directory!")
+                }
+            } else {
+                if (!file.isDirectory) {
+                    throw InvalidPathException("Not a directory", path.toString())
+                }
+            }
+            return LmdbEnv(Env.create().setMapSize(mapSize).setMaxDbs(maxDbs).open(file))
+        }
+
+    }
+
+    protected fun finalize() {
+        env.close()
+    }
+
 }

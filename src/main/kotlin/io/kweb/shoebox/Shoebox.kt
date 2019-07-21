@@ -28,7 +28,7 @@ import kotlin.reflect.KClass
 inline fun <reified T : Any> Shoebox(store : Store<T>) = Shoebox(store, T::class)
 inline fun <reified T : Any> Shoebox(dir : Path) = Shoebox(DirectoryStore(dir), T::class)
 inline fun <reified T : Any> Shoebox() = Shoebox(MemoryStore(), T::class)
-inline fun <reified T : Any> LmdbShoebox(name: String) = Shoebox(LmdbStore(name), T::class)
+inline fun <reified T : Any> Shoebox(lmdbEnv: LmdbEnv, name: String) = Shoebox(LmdbStore(lmdbEnv, name), T::class)
 
 /**
  * Can persistently store and retrieve objects, and notify listeners of changes to those objects
@@ -170,7 +170,7 @@ class Shoebox<T : Any>(val store: Store<T>, private val kc: KClass<T>) {
             is MemoryStore<T> -> MemoryStore<Reference>()
             is DirectoryStore<T> ->
                 DirectoryStore<Reference>(store.directory.parent.resolve("${store.directory.fileName}-$name-view"))
-            is LmdbStore<T> -> LmdbStore<Reference>("${store.name}-$name-view")
+            is LmdbStore<T> -> LmdbStore<Reference>(store.lmdbEnv,"${store.name}-$name-view")
             else -> throw RuntimeException("Shoebox doesn't currently support creating a view for store type ${store::class.simpleName}")
         }
         return View<T>(Shoebox(store), this, verify, by)
